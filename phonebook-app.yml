@@ -13,7 +13,7 @@ Parameters:
 
   Subnets:
     Description: Please choose your subnets
-    Type: AWS::EC2::Subnet::Id
+    Type: List<AWS::EC2::Subnet::Id>
 
   KeyName:
     Description: Select your keypair
@@ -118,7 +118,6 @@ Resources:
     Type: AWS::IAM::InstanceProfile
     Properties:
       InstanceProfileName: umut-phonebook-ip
-      Path: "String"
       Roles: # Required
         - !Ref mySSMRole
   
@@ -136,14 +135,14 @@ Resources:
               - 'sts:AssumeRole'
       Description: Allow SSM
       ManagedPolicyArns:
-        - arn:aws:iam:aws:policy/AmazonSSMFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMFullAccess
       RoleName: umut-SSM-phonebook
 
   rDSInstance:
     Type: AWS::RDS::DBInstance
     Properties:
       AllocatedStorage: 20
-      AutomaticBackupReplicationRetentionPeriod: 0
+      BackupRetentionPeriod: 0
       DBInstanceClass: db.t3.micro
       DBInstanceIdentifier: umut-phonebook-db
       DBName: !Ref myDbname # Alternative way: '{{resolve:ssm:/clarusway/phonebook/dbname:1}}'
@@ -151,7 +150,7 @@ Resources:
         - !Ref rDSSecGrp
       DeleteAutomatedBackups: true
       Engine: mysql
-      EngineVersion: 8.0.35
+      EngineVersion: 8.0.42
       MasterUserPassword: '{{resolve:ssm-secure:/clarusway/phonebook/password:1}}'
       MasterUsername: '{{resolve:ssm:/clarusway/phonebook/username:1}}'
       MultiAZ: false
@@ -179,7 +178,6 @@ Resources:
           FromPort: 80
           IpProtocol: tcp
           ToPort: 80
-
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
@@ -196,7 +194,6 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
