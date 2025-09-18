@@ -12,41 +12,43 @@ Description: |
 Parameters:
 
   Subnets:
-    Description: Choose you subnets
+    Description: Please choose your subnets
     Type: List<AWS::EC2::Subnet::Id>
 
   KeyName:
-    Description: Please enter your Key pair
+    Description: Select your keypair
     Type: AWS::EC2::KeyPair::KeyName
-
+    Default: first-key
+  
   LatestAmiId:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
 
   myVPC:
-    Description: choose your vpc
+    Description: Choose your VPC
     Type: AWS::EC2::VPC::Id
-  
-  myDbname: 
+
+  myDbname:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /clarusway/phonebook/dbname
 
+  
 Resources:
 
   ASG:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    Properties: 
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
       DesiredCapacity: 1
       HealthCheckGracePeriod: 300
-      HealthCheckType: ELB 
+      HealthCheckType: ELB
       LaunchTemplate:
-        LaunchTemplateId: !Ref LT 
-        Version: !GetAtt LT.LatestVersionNumber 
-      MaxSize: 3 
-      MinSize: 1  
+        LaunchTemplateId: !Ref LT
+        Version: !GetAtt LT.LatestVersionNumber
+      MaxSize: 3 #required
+      MinSize: 1 #required
       TargetGroupARNs:
         - !Ref TG
-      VPCZoneIdentifier: !Ref Subnets # not array
+      VPCZoneIdentifier: !Ref Subnets
 
   ALB:
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
@@ -59,14 +61,14 @@ Resources:
       Type: application
 
   ALBListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
-      DefaultActions: # Required
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions: #required
         - TargetGroupArn: !Ref TG
           Type: forward
-      LoadBalancerArn: !Ref ALB # Required
-      Port: 80 # Required
-      Protocol: HTTP  # Required
+      LoadBalancerArn: !Ref ALB #required
+      Port: 80 #required
+      Protocol: HTTP #required
 
   LT:
     Type: AWS::EC2::LaunchTemplate
@@ -79,15 +81,15 @@ Resources:
         KeyName: !Ref KeyName
         SecurityGroupIds:
           - !GetAtt eC2SecGrp.GroupId
-        TagSpecifications: 
+        TagSpecifications:
           - ResourceType: instance
-            Tags:
+            Tags: 
               - Key: Name
                 Value: !Sub Web Server of ${AWS::StackName} Stack
-        UserData:
+        UserData: 
           Fn::Base64:
             !Sub 
-              - |
+              - 
                 #! /bin/bash -x
                 dnf update -y
                 dnf install python3 -y
@@ -102,24 +104,25 @@ Resources:
                 git clone https://$TOKEN@github.com/umut-burdur/phonebook-web-app.git
                 python3 /home/ec2-user/phonebook-web-app/solutions/phonebook-app.py
               - MyDBURI: !GetAtt rDSInstance.Endpoint.Address
-
+  
   TG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties: 
-      HealthyThresholdCount: 2 
+    Properties:
+      HealthyThresholdCount: 2
       HealthCheckTimeoutSeconds: 10
       Port: 80
-      Protocol: HTTP 
-      TargetType: instance 
+      Protocol: HTTP
+      TargetType: instance
       UnhealthyThresholdCount: 3
       VpcId: !Ref myVPC
-
+  
   myInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       InstanceProfileName: umut-phonebook-ip
       Roles: # Required
         - !Ref mySSMRole
+  
   mySSMRole:
     Type: AWS::IAM::Role
     Properties:
@@ -132,8 +135,8 @@ Resources:
                 - ec2.amazonaws.com
             Action:
               - 'sts:AssumeRole'
-      Description: allow ssm
-      ManagedPolicyArns: 
+      Description: Allow SSM
+      ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMFullAccess
       RoleName: umut-SSM-phonebook
 
@@ -143,8 +146,8 @@ Resources:
       AllocatedStorage: 20
       BackupRetentionPeriod: 0
       DBInstanceClass: db.t3.micro
-      DBInstanceIdentifier: umut-phonebook
-      DBName: !Ref myDbname # '{{resolve:ssm:/clarusway/phonebook/dbname:1}}'
+      DBInstanceIdentifier: umut-phonebook-db
+      DBName: !Ref myDbname # Alternative way: '{{resolve:ssm:/clarusway/phonebook/dbname:1}}'
       DBSecurityGroups: 
         - !Ref rDSSecGrp
       DeleteAutomatedBackups: true
@@ -156,55 +159,53 @@ Resources:
       Port: 3306
       PubliclyAccessible: true
     DeletionPolicy: Delete
-
+  
   rDSSecGrp:
     Type: AWS::RDS::DBSecurityGroup
     Properties:
       DBSecurityGroupIngress: # Required
-        - EC2SecurityGroupId: !GetAtt  eC2SecGrp.GroupId
-      GroupDescription: allow 3306 from ec2secgrp # Required
+        - EC2SecurityGroupId: !GetAtt eC2SecGrp.GroupId
+      GroupDescription: Allow 3306 from eC2SecGrp # Required
       Tags: 
         - Key: Name
-          Value: umut-phonebook-secgrp
-
+          Value: umut-phonebook-dbsecgrp
+  
   eC2SecGrp:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: allow ssh from anywhere and http from alb # Required
-      GroupName: umut-phonebook-ec2-secgrp
+      GroupDescription: Allow SSH from anywhere and http from ALB # Required
+      GroupName: umut-phonebook-app-ec2-secgrp 
       SecurityGroupIngress: 
-        - SourceSecurityGroupId: !GetAtt aLBSecGrp.GroupId # !Ref aLBSecGrp
+        - SourceSecurityGroupId: !GetAtt aLBSecGrp.GroupId # Another way: !Ref aLBSecGrp
           FromPort: 80
           IpProtocol: tcp
           ToPort: 80
-
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0
+          CidrIp: 0.0.0.0/0  
       VpcId: !Ref myVPC
-
+  
   aLBSecGrp:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow ssh and http # Required
-      GroupName: osvaldo-phonebook-alb-secgrp-19
-      SecurityGroupIngress:
+      GroupDescription: Allow SSH and HTTP # Required
+      GroupName: umut-phonebook-app-alb-secgrp 
+      SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
       VpcId: !Ref myVPC
-
+  
+    
 Outputs:
   WebsiteURL:
     Value: !Sub 
       - http://${ALBAddress}
       - ALBAddress: !GetAtt ALB.DNSName
-    Description: Phonebook Application Load Balancer URL
-  
+    Description: Phonebook Application Load Balancer URL  
